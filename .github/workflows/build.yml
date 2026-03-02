@@ -1,11 +1,11 @@
 name: OrangeFox Build
 
 on:
-  workflow_dispatch: # Позволяет запускать сборку кнопкой вручную
+  workflow_dispatch:
 
 jobs:
   build:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-22.04 # Фиксируем версию для стабильности
     steps:
     - name: Checkout
       uses: actions/checkout@v4
@@ -13,21 +13,19 @@ jobs:
     - name: Cleanup Space
       run: |
         sudo rm -rf /usr/share/dotnet /etc/mysql /var/lib/mysql
-        sudo apt-get purge azure-cli google-cloud-sdk hhvm postgis postgresql*
-        sudo apt-get autoremove --purge
+        sudo apt-get autoremove --purge -y
         sudo apt-get clean
 
     - name: Set up Environment
       run: |
-        sudo apt-get update
+        sudo apt-get update -y || true
         sudo apt-get install -y bc build-essential tar libssl-dev libxml2-utils \
           git-core gnupg flex bison gperf zip curl zlib1g-dev gcc-multilib \
-          g++-multilib libc6-dev-i386 lib32ncurses5-dev x11proto-core-dev \
-          libx11-dev lib32z1-dev libgl1-mesa-dev python3 python3-pip
+          g++-multilib libc6-dev-i386 python3 python3-pip rsync
 
     - name: Install Repo
       run: |
-        mkdir ~/bin
+        mkdir -p ~/bin
         curl https://storage.googleapis.com/git-repo-downloads/repo > ~/bin/repo
         chmod a+x ~/bin/repo
         sudo ln -sf ~/bin/repo /usr/bin/repo
@@ -43,9 +41,8 @@ jobs:
     - name: Integrate Device Tree
       run: |
         mkdir -p fox/device/xiaomi/serenity
-        cp -r ./* fox/device/xiaomi/serenity/
-        # Убираем папку .github из дерева устройства, чтобы не мешала
-        rm -rf fox/device/xiaomi/serenity/.github
+        # Копируем всё, кроме папки fox и системных папок git
+        rsync -av --exclude='.git' --exclude='.github' --exclude='fox' ./ fox/device/xiaomi/serenity/
 
     - name: Build OrangeFox
       run: |
