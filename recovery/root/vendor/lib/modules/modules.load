@@ -1,0 +1,5 @@
+mali_kbase.ko
+focaltech_ft8057_spi_ts.ko
+novatek_nt36528a_spi_ts.ko
+hq_touch.ko
+sprd-drm.ko
