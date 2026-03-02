@@ -1,61 +1,57 @@
-name: OrangeFox Build
+name: OrangeFox Build Final
 
 on:
   workflow_dispatch:
 
 jobs:
   build:
-    runs-on: ubuntu-22.04 # Фиксируем версию для стабильности
+    runs-on: ubuntu-22.04
     steps:
-    - name: Checkout
-      uses: actions/checkout@v4
+      - name: Checkout
+        uses: actions/checkout@v4
 
-    - name: Cleanup Space
-      run: |
-        sudo rm -rf /usr/share/dotnet /etc/mysql /var/lib/mysql
-        sudo apt-get autoremove --purge -y
-        sudo apt-get clean
+      - name: Cleanup and Install Tools
+        run: |
+          sudo apt-get update || true
+          sudo apt-get install -y git-core gnupg flex bison gperf build-essential \
+          zip curl zlib1g-dev gcc-multilib g++-multilib libc6-dev-i386 \
+          lib32ncurses5-dev x11proto-core-dev libx11-dev lib32z1-dev libgl1-mesa-dev \
+          libxml2-utils xsltproc unzip python3 rsync
 
-    - name: Set up Environment
-      run: |
-        sudo apt-get update -y || true
-        sudo apt-get install -y bc build-essential tar libssl-dev libxml2-utils \
-          git-core gnupg flex bison gperf zip curl zlib1g-dev gcc-multilib \
-          g++-multilib libc6-dev-i386 python3 python3-pip rsync
+      - name: Install Repo Tool
+        run: |
+          mkdir -p ~/bin
+          curl https://storage.googleapis.com/git-repo-downloads/repo > ~/bin/repo
+          chmod a+x ~/bin/repo
+          sudo ln -sf ~/bin/repo /usr/bin/repo
 
-    - name: Install Repo
-      run: |
-        mkdir -p ~/bin
-        curl https://storage.googleapis.com/git-repo-downloads/repo > ~/bin/repo
-        chmod a+x ~/bin/repo
-        sudo ln -sf ~/bin/repo /usr/bin/repo
+      - name: Sync OrangeFox
+        run: |
+          mkdir fox && cd fox
+          git config --global user.email "build@fox.com"
+          git config --global user.name "Builder"
+          # Используем GitHub зеркало, оно стабильнее для Actions
+          repo init -u https://github.com/OrangeFoxRecovery/Manifest.git -b fox_12.1 --depth=1
+          repo sync -c -j$(nproc) --force-sync --no-clone-bundle --no-tags
 
-    - name: Sync OrangeFox Sources
-      run: |
-        mkdir fox && cd fox
-        git config --global user.email "bot@example.com"
-        git config --global user.name "BuildBot"
-        repo init -u https://github.com/OrangeFoxRecovery/Manifest.git -b fox_12.1 --depth=1
-        repo sync -j$(nproc) --force-sync --no-clone-bundle --no-tags
+      - name: Add Your Device Tree
+        run: |
+          mkdir -p fox/device/xiaomi/serenity
+          # Копируем файлы из корня репозитория в папку дерева
+          rsync -av --exclude='.git' --exclude='.github' --exclude='fox' ./ fox/device/xiaomi/serenity/
 
-    - name: Integrate Device Tree
-      run: |
-        mkdir -p fox/device/xiaomi/serenity
-        # Копируем всё, кроме папки fox и системных папок git
-        rsync -av --exclude='.git' --exclude='.github' --exclude='fox' ./ fox/device/xiaomi/serenity/
+      - name: Start Build
+        run: |
+          cd fox
+          set -e
+          source build/envsetup.sh
+          export ALLOW_MISSING_DEPENDENCIES=true
+          export FOX_REPLACE_TOOLBOX_GETPROP=1
+          lunch omni_serenity-eng
+          mka recoveryimage -j$(nproc)
 
-    - name: Build OrangeFox
-      run: |
-        cd fox
-        source build/envsetup.sh
-        export ALLOW_MISSING_DEPENDENCIES=true
-        export FOX_REPLACE_TOOLBOX_GETPROP=1
-        export LC_ALL=C
-        lunch omni_serenity-eng
-        mka recoveryimage -j$(nproc)
-
-    - name: Upload Recovery Image
-      uses: actions/upload-artifact@v4
-      with:
-        name: OrangeFox-Serenity
-        path: fox/out/target/product/serenity/recovery.img
+      - name: Upload Result
+        uses: actions/upload-artifact@v4
+        with:
+          name: OrangeFox-Recovery-Serenity
+          path: fox/out/target/product/serenity/recovery.img
